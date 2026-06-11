@@ -76,18 +76,17 @@ export async function getProfile(userId) {
     .from("profiles")
     .select("*")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
   if (error) throw error;
   return data;
 }
 
-/** Update any profile fields */
+/** Update or insert any profile fields */
 export async function updateProfile(userId, patch) {
   if (!supabase) return;
   const { error } = await supabase
     .from("profiles")
-    .update(patch)
-    .eq("id", userId);
+    .upsert({ id: userId, ...patch });
   if (error) throw error;
 }
 
@@ -118,7 +117,6 @@ export async function completeLesson(userId, lessonId, moduleId, xpEarned) {
       { onConflict: "user_id,lesson_id" }
     );
   if (error) throw error;
-  // Award XP server-side (updates streak too)
   await awardXP(userId, xpEarned);
 }
 
