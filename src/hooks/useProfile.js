@@ -35,14 +35,23 @@ export function useProfile(uid) {
   const loadProfile = useCallback(async () => {
     if (!uid) return null;
 
-    // 1. Apply localStorage immediately for instant UI (lang, mode, onboarded, avatar)
     const local = loadLs(uid);
     if (local) setProfile(p => ({ ...p, ...local }));
 
     setLoading(true);
     try {
-      const [prof, comp, history] = await Promise.all([
-        getProfile(uid),
+      let prof = await getProfile(uid);
+
+      // ── Auto-create profile if it doesn't exist ──────────
+      if (!prof) {
+        await updateProfile(uid, {
+          ...DEFAULT_PROFILE,
+          id: uid,
+        });
+        prof = await getProfile(uid);
+      }
+
+      const [comp, history] = await Promise.all([
         getCompletedLessons(uid),
         getChatHistory(uid),
       ]);
@@ -50,17 +59,13 @@ export function useProfile(uid) {
       if (prof) {
         const merged = {
           ...prof,
-          language:   local?.language   ?? prof.language  ?? "en",
-          mode:       local?.mode       ?? prof.mode      ?? "beginner",
-          // Avatar: prefer local cache (user just changed it) over DB stale value
+          language:     local?.language     ?? prof.language     ?? "en",
+          mode:         local?.mode         ?? prof.mode         ?? "beginner",
           avatar_emoji: local?.avatar_emoji ?? prof.avatar_emoji ?? "⭐",
           avatar_url:   local?.avatar_url   ?? prof.avatar_url   ?? null,
-          // onboarded: ONLY from localStorage — DB value is ignored.
-          onboarded: local?.onboarded ?? false,
+          onboarded:    local?.onboarded    ?? false,
         };
         setProfile(merged);
-
-        // Sync back to localStorage
         saveLs(uid, {
           language:     merged.language,
           mode:         merged.mode,
@@ -68,7 +73,6 @@ export function useProfile(uid) {
           avatar_emoji: merged.avatar_emoji,
           avatar_url:   merged.avatar_url,
         });
-
         setCompleted(comp);
         if (history.length > 0) setChatSeed(history);
         return merged;
@@ -94,7 +98,6 @@ export function useProfile(uid) {
           streak_count: prof.streak_count ?? p.streak_count,
           gems:         prof.gems         ?? p.gems,
           display_name: prof.display_name ?? p.display_name,
-          // Keep local avatar if DB doesn't have one yet
           avatar_emoji: prof.avatar_emoji ?? p.avatar_emoji,
           avatar_url:   prof.avatar_url   ?? p.avatar_url,
         }));
@@ -103,18 +106,14 @@ export function useProfile(uid) {
   }, [uid]);
 
   // ── Update avatar (emoji or image URL) ───────────────────
-  // Updates local state + localStorage immediately, then syncs to DB.
   const updateAvatar = useCallback(async ({ avatar_emoji, avatar_url }) => {
     const patch = {
       avatar_emoji: avatar_emoji ?? "⭐",
       avatar_url:   avatar_url   ?? null,
     };
-    // Optimistic update
     setProfile(p => ({ ...p, ...patch }));
-    // Persist to localStorage so it survives page refresh
     const ls = loadLs(uid) ?? {};
     saveLs(uid, { ...ls, ...patch });
-    // Sync to DB best-effort
     if (uid) {
       try { await updateProfile(uid, patch); }
       catch (e) { console.warn("updateAvatar DB sync failed", e); }
@@ -128,7 +127,6 @@ export function useProfile(uid) {
     if (uid) {
       try {
         await dbCompleteLesson(uid, lessonId, moduleId, xpAmount);
-        // Refresh from DB to get accurate streak/XP
         const prof = await getProfile(uid);
         if (prof) {
           setProfile(p => ({
@@ -199,7 +197,6 @@ export function useProfile(uid) {
     setLanguage,
     savePreferences,
     updateAvatar,
-    // derived shortcuts
     xp:     profile.xp,
     gems:   profile.gems,
     streak: profile.streak_count,
