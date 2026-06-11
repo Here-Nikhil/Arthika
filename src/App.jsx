@@ -27,7 +27,6 @@ function isOnboarded(uid) {
   } catch { return false; }
 }
  
-// Read lang directly from localStorage — synchronous, no React state lag
 function getSavedLang(uid) {
   if (!uid) return "en";
   try {
@@ -49,11 +48,8 @@ export default function App() {
     xp, gems, streak, mode, lvl, lvlPct, lvlTo,
   } = useProfile(uid);
  
-  // ── lang lives in App state so it can be set synchronously ──
-  // profile.language has React batching lag; this has none.
   const [lang, setLang] = useState(() => getSavedLang(uid));
  
-  // Keep lang in sync whenever profile updates (e.g. after loadProfile)
   useEffect(() => {
     if (profile.language && profile.language !== lang) {
       setLang(profile.language);
@@ -61,7 +57,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.language]);
  
-  // Also sync when uid changes (new login)
   useEffect(() => {
     setLang(getSavedLang(uid));
   }, [uid]);
@@ -79,7 +74,7 @@ export default function App() {
     if (!authUser) { setScreen("auth"); return; }
  
     if (isOnboarded(uid)) {
-      setLang(getSavedLang(uid)); // set lang immediately from localStorage
+      setLang(getSavedLang(uid));
       loadProfile();
       setScreen("home");
     } else {
@@ -117,10 +112,9 @@ export default function App() {
     await recordQuiz({ lessonId: activeLesson.id, moduleId: activeMod?.id ?? "", score, total, livesLeft, xpEarned: 0, passed: false });
   }
  
-  // Called from ProfileScreen when user changes language in-app
   function handleLangChange(newLang) {
-    setLang(newLang);       // immediate — no batching lag
-    setLanguage(newLang);   // syncs to profile state + localStorage + DB
+    setLang(newLang);
+    setLanguage(newLang);
   }
  
   function navigate(dest) { setScreen(dest); }
@@ -131,10 +125,11 @@ export default function App() {
  
       case "splash":
         return (
-          <SplashScreen onDone={() => {
+          <SplashScreen onDone={async () => {
             if (authLoading) return;
             if (!authUser) { setScreen("auth"); return; }
             setLang(getSavedLang(uid));
+            await loadProfile();
             setScreen(isOnboarded(uid) ? "home" : "preferences");
           }} />
         );
@@ -145,7 +140,7 @@ export default function App() {
             onAuth={async user => {
               setLang(getSavedLang(user.id));
               if (isOnboarded(user.id)) {
-                loadProfile();
+                await loadProfile();
                 setScreen("home");
               } else {
                 const prof = await loadProfile();
@@ -160,7 +155,6 @@ export default function App() {
         return (
           <PreferencesScreen
             onDone={async prefs => {
-              // Set lang IMMEDIATELY before any async work or screen change
               setLang(prefs.language);
               await savePreferences(prefs);
               setScreen("home");
@@ -224,4 +218,3 @@ export default function App() {
     </PhoneShell>
   );
 }
- 
