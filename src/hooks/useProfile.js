@@ -44,8 +44,12 @@ export function useProfile(uid) {
 
       // ── Auto-create profile if it doesn't exist ──────────
       if (!prof) {
+        const { getSessionUser } = await import("../lib/db.js");
+        const authUser = await getSessionUser();
+        const fullName = authUser?.user_metadata?.full_name;
         await updateProfile(uid, {
           ...DEFAULT_PROFILE,
+          display_name: fullName || DEFAULT_PROFILE.display_name,
           id: uid,
         });
         prof = await getProfile(uid);
